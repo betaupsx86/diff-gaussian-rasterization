@@ -57,22 +57,16 @@ RasterizeGaussiansCUDA(
   if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
     AT_ERROR("means3D must have dimensions (num_points, 3)");
   }
-  
+  cudaSetDevice(means3D.device().index());
   const int P = means3D.size(0);
   const int H = image_height;
   const int W = image_width;
 
-  auto int_opts = means3D.options().dtype(torch::kInt32);
-  auto float_opts = means3D.options().dtype(torch::kFloat32);
-
-  torch::Tensor out_color = torch::full({NUM_CHANNELS, H, W}, 0.0, float_opts);
-  torch::Tensor radii = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
-  
-  torch::Device device(torch::kCUDA);
-  torch::TensorOptions options(torch::kByte);
-  torch::Tensor geomBuffer = torch::empty({0}, options.device(device));
-  torch::Tensor binningBuffer = torch::empty({0}, options.device(device));
-  torch::Tensor imgBuffer = torch::empty({0}, options.device(device));
+  torch::Tensor out_color = torch::full({NUM_CHANNELS, H, W}, 0.0, means3D.options().dtype(torch::kFloat32));
+  torch::Tensor radii = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));  
+  torch::Tensor geomBuffer = torch::empty({0}, means3D.options().dtype(torch::kByte));
+  torch::Tensor binningBuffer = torch::empty({0}, means3D.options().dtype(torch::kByte));
+  torch::Tensor imgBuffer = torch::empty({0}, means3D.options().dtype(torch::kByte));
   std::function<char*(size_t)> geomFunc = resizeFunctional(geomBuffer);
   std::function<char*(size_t)> binningFunc = resizeFunctional(binningBuffer);
   std::function<char*(size_t)> imgFunc = resizeFunctional(imgBuffer);
@@ -138,6 +132,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const torch::Tensor& imageBuffer,
 	const bool debug) 
 {
+  cudaSetDevice(means3D.device().index());
   const int P = means3D.size(0);
   const int H = dL_dout_color.size(1);
   const int W = dL_dout_color.size(2);
@@ -200,18 +195,19 @@ torch::Tensor markVisible(
 		torch::Tensor& viewmatrix,
 		torch::Tensor& projmatrix)
 { 
-  const int P = means3D.size(0);
-  
-  torch::Tensor present = torch::full({P}, false, means3D.options().dtype(at::kBool));
- 
-  if(P != 0)
-  {
-	CudaRasterizer::Rasterizer::markVisible(P,
-		means3D.contiguous().data<float>(),
-		viewmatrix.contiguous().data<float>(),
-		projmatrix.contiguous().data<float>(),
-		present.contiguous().data<bool>());
-  }
-  
+	cudaSetDevice(means3D.device().index()); 
+	const int P = means3D.size(0);
+
+	torch::Tensor present = torch::full({means3D.size(0)}, false, means3D.options().dtype(at::kBool));
+
+	if(P != 0)
+	{
+		CudaRasterizer::Rasterizer::markVisible(P,
+			means3D.contiguous().data<float>(),
+			viewmatrix.contiguous().data<float>(),
+			projmatrix.contiguous().data<float>(),
+			present.contiguous().data<bool>());
+	}
+	
   return present;
 }
